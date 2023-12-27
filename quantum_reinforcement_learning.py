@@ -15,12 +15,12 @@ from cirq.contrib.svg import SVGCircuit
 tf.get_logger().setLevel('ERROR')
 from PIL import Image
 
-# desc_map = [
-#     "SFFF",
-#     "FHFH",
-#     "FFFH",
-#     "HFFG"
-# ]
+desc_map = [
+    "SFFF",
+    "FHFH",
+    "FFFH",
+    "HFFG"
+]
 
 # desc_map = [
 #     "SFFFF",
@@ -39,23 +39,21 @@ from PIL import Image
 #     "FFHFFG"
 # ]
 
-desc_map = [
-    "SFFFFFFF",
-    "FFFFFFFF",
-    "FFFHFFFF",
-    "FFFFFHFF",
-    "FFFHFFFF",
-    "FHHFFFHF",
-    "FHFFHFHF",
-    "FFFHFFFG",
-]
-
-# desc_map = generate_random_map(size = 6)
+# desc_map = [
+#     "SFFFFFFF",
+#     "FFFFFFFF",
+#     "FFFHFFFF",
+#     "FFFFFHFF",
+#     "FFFHFFFF",
+#     "FHHFFFHF",
+#     "FHFFHFHF",
+#     "FFFHFFFG",
+# ]
 
 is_slippery = True
 
 def save_gif_policy(model, config, text):
-    env = gym.make(config["env_name"], render_mode="rgb_array")
+    env = gym.make(config["env_name"], desc = desc_map, is_slippery = is_slippery, render_mode="rgb_array")
     state, _ = env.reset()
     state = state_convertion(state, n_qubits)
     episode_reward = 0
@@ -69,11 +67,12 @@ def save_gif_policy(model, config, text):
         episode_reward += reward
         state = state_convertion(state, n_qubits)
         if terminated or truncated:
-            print(episode_reward)
             break
     env.close()
-    frames[1].save(f'./images/{config["env_name"]}_policy_{text}.gif',
+    frames[1].save(f'./images/{config["env_name"]}_policy_{text}_{len(desc_map)}x{len(desc_map[0])}_{is_slippery}.gif',
                 save_all=True, append_images=frames[2:], optimize=False, duration=40, loop=0)
+    
+    return episode_reward
 
 def save_gif_Q(model, config, text):
     env = gym.make(config["env_name"], desc = desc_map, is_slippery = is_slippery, render_mode="rgb_array")
@@ -92,7 +91,7 @@ def save_gif_Q(model, config, text):
         if terminated or truncated:
             break
     env.close()
-    frames[1].save(f'./images/{config["env_name"]}_Q_{text}_{len(desc_map)}x{len(desc_map[0])}_{is_slippery}.gif',
+    frames[1].save(f'./images/{config["env_name"]}_Q_{text}_{len(desc_map)}x{len(desc_map[0])}_{is_slippery}_{n_layers}.gif',
                 save_all=True, append_images=frames[2:], optimize=False, duration=40, loop=0)
     
     return episode_reward
@@ -221,7 +220,7 @@ def gather_episodes(state_bounds, n_actions, model, n_episodes, env_name):
     """Interact with environment in batched fashion."""
 
     trajectories = [defaultdict(list) for _ in range(n_episodes)]
-    envs = [gym.make(env_name) for _ in range(n_episodes)]
+    envs = [gym.make(env_name, desc = desc_map, is_slippery = is_slippery) for _ in range(n_episodes)]
 
     done = [False for _ in range(n_episodes)]
     states = [state_convertion(e.reset()[0], n_qubits) for e in envs]
@@ -379,9 +378,11 @@ def train_model_policy(config):
     plt.plot(episode_reward_history)
     plt.xlabel('Epsiode')
     plt.ylabel('Collected rewards')
-    plt.savefig(f'./images/{config["env_name"]}_policy.png')
+    plt.savefig(f'./images/{config["env_name"]}_policy_{len(desc_map)}x{len(desc_map[0])}_{is_slippery}.png')
     
-    save_gif_policy(model, config, "end")
+    episode_reward = 0
+    while episode_reward == 0:
+        episode_reward = save_gif_policy(model, config, "end")
 
 def train_model_Q(config):
     model = generate_model_Qlearning(qubits, n_layers, n_actions, observables, False)
@@ -445,7 +446,7 @@ def train_model_Q(config):
     plt.plot(episode_reward_history)
     plt.xlabel('Epsiode')
     plt.ylabel('Collected rewards')
-    plt.savefig(f'./images/{config["env_name"]}_Q_{len(desc_map)}x{len(desc_map[0])}_{is_slippery}.png')
+    plt.savefig(f'./images/{config["env_name"]}_Q_{len(desc_map)}x{len(desc_map[0])}_{is_slippery}_{n_layers}.png')
     
     episode_reward = 0
     while episode_reward == 0:
@@ -464,8 +465,8 @@ def state_convertion(state, num):
 
 if __name__ == "__main__":
     
-    n_qubits = 6 # Dimension of the state vectors in CartPole
-    n_layers = 15 # Number of layers in the PQC
+    n_qubits = 4 # Dimension of the state vectors in CartPole
+    n_layers = 100 # Number of layers in the PQC
     n_actions = 4 # Number of actions in CartPole
 
     qubits = cirq.GridQubit.rect(1, n_qubits)
@@ -477,7 +478,7 @@ if __name__ == "__main__":
     env_name = "FrozenLake-v1"
     
     # state_bounds = np.array([2.4, 2.5, 0.21, 2.5])
-    state_bounds = np.array([1, 1, 1, 1, 1, 1])
+    state_bounds = np.array([1, 1, 1, 1])
     gamma = 1
     terminate_reward = 0.9
     
@@ -487,10 +488,10 @@ if __name__ == "__main__":
         "gamma": gamma,
         "terminate_reward": terminate_reward,
         "batch_size": 10,
-        "n_episodes": 10000,
-        "optimizer_in": tf.keras.optimizers.Adam(learning_rate=0.1, amsgrad=True),
-        "optimizer_var": tf.keras.optimizers.Adam(learning_rate=0.01, amsgrad=True),
-        "optimizer_out": tf.keras.optimizers.Adam(learning_rate=0.1, amsgrad=True),
+        "n_episodes": 20000,
+        "optimizer_in": tf.keras.optimizers.Adam(learning_rate=0., amsgrad=True),
+        "optimizer_var": tf.keras.optimizers.Adam(learning_rate=0.001, amsgrad=True),
+        "optimizer_out": tf.keras.optimizers.Adam(learning_rate=0., amsgrad=True),
         "w_in": 1, 
         "w_var": 0, 
         "w_out": 2,
