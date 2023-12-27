@@ -1,5 +1,6 @@
 # Update package resources to account for version changes.
 import importlib, pkg_resources
+from gym.envs.toy_text.frozen_lake import generate_random_map
 importlib.reload(pkg_resources)
 
 import tensorflow as tf
@@ -13,6 +14,45 @@ import matplotlib.pyplot as plt
 from cirq.contrib.svg import SVGCircuit
 tf.get_logger().setLevel('ERROR')
 from PIL import Image
+
+# desc_map = [
+#     "SFFF",
+#     "FHFH",
+#     "FFFH",
+#     "HFFG"
+# ]
+
+# desc_map = [
+#     "SFFFF",
+#     "FHFHF",
+#     "FFFHF",
+#     "HFFFF",
+#     "FFHFG"
+# ]
+
+# desc_map = [
+#     "SFFFFF",
+#     "FHFHFF",
+#     "FFFHFF",
+#     "HFFFFH",
+#     "FFFFFF",
+#     "FFHFFG"
+# ]
+
+desc_map = [
+    "SFFFFFFF",
+    "FFFFFFFF",
+    "FFFHFFFF",
+    "FFFFFHFF",
+    "FFFHFFFF",
+    "FHHFFFHF",
+    "FHFFHFHF",
+    "FFFHFFFG",
+]
+
+# desc_map = generate_random_map(size = 6)
+
+is_slippery = True
 
 def save_gif_policy(model, config, text):
     env = gym.make(config["env_name"], render_mode="rgb_array")
@@ -36,7 +76,7 @@ def save_gif_policy(model, config, text):
                 save_all=True, append_images=frames[2:], optimize=False, duration=40, loop=0)
 
 def save_gif_Q(model, config, text):
-    env = gym.make(config["env_name"], render_mode="rgb_array")
+    env = gym.make(config["env_name"], desc = desc_map, is_slippery = is_slippery, render_mode="rgb_array")
     state, _ = env.reset()
     state = state_convertion(state, n_qubits)
     episode_reward = 0
@@ -50,11 +90,12 @@ def save_gif_Q(model, config, text):
         episode_reward += reward
         state = state_convertion(state, n_qubits)
         if terminated or truncated:
-            print(episode_reward)
             break
     env.close()
-    frames[1].save(f'./images/{config["env_name"]}_Q_{text}.gif',
+    frames[1].save(f'./images/{config["env_name"]}_Q_{text}_{len(desc_map)}x{len(desc_map[0])}_{is_slippery}.gif',
                 save_all=True, append_images=frames[2:], optimize=False, duration=40, loop=0)
+    
+    return episode_reward
 
 def one_qubit_rotation(qubit, symbols):
     """
@@ -263,7 +304,7 @@ def interact_env(state_bounds, state, model, epsilon, n_actions, env):
         action = np.random.choice(n_actions)
 
     # Apply sampled action in the environment, receive reward and next state
-    next_state, reward, terminated, truncated, _ = env.step(action)
+    next_state, reward, terminated, truncated, info = env.step(action)
     next_state = state_convertion(next_state, n_qubits)
     next_state /= state_bounds
     done = terminated or truncated
@@ -348,8 +389,7 @@ def train_model_Q(config):
     model_target.set_weights(model.get_weights())
     
     save_gif_Q(model, config, "start")
-    
-    env = gym.make(config["env_name"])
+    env = gym.make(config["env_name"], desc = desc_map, is_slippery = is_slippery)
     replay_memory = deque(maxlen=config["max_memory_length"])
     
     episode_reward_history = []
@@ -405,9 +445,11 @@ def train_model_Q(config):
     plt.plot(episode_reward_history)
     plt.xlabel('Epsiode')
     plt.ylabel('Collected rewards')
-    plt.savefig(f'./images/{config["env_name"]}_Q.png')
+    plt.savefig(f'./images/{config["env_name"]}_Q_{len(desc_map)}x{len(desc_map[0])}_{is_slippery}.png')
     
-    save_gif_Q(model, config, "end")
+    episode_reward = 0
+    while episode_reward == 0:
+        episode_reward = save_gif_Q(model, config, "end")
     
 def state_convertion(state, num):
     if isinstance(state, int):
@@ -422,28 +464,20 @@ def state_convertion(state, num):
 
 if __name__ == "__main__":
     
-    n_qubits = 4 # Dimension of the state vectors in CartPole
-    n_layers = 10 # Number of layers in the PQC
+    n_qubits = 6 # Dimension of the state vectors in CartPole
+    n_layers = 15 # Number of layers in the PQC
     n_actions = 4 # Number of actions in CartPole
 
     qubits = cirq.GridQubit.rect(1, n_qubits)
     ops = [cirq.Z(q) for q in qubits]
     # observables = [ops[0] * ops[1], ops[2] * ops[3]]
-    # observables = [ops[0], ops[1], ops[0] * ops[1]]
-    # observables = [ops[0] * ops[1] * ops[2] * ops[3],
-    #                ops[4] * ops[5] * ops[6] * ops[7],
-    #                ops[8] * ops[9] * ops[10] * ops[11],
-    #                ops[12] * ops[13] * ops[14] * ops[15],]
     observables = [ops[0], ops[1], ops[2], ops[3]]
     
     # env_name = "CartPole-v1"
-    # env_name = "Acrobot-v1"
-    # env_name = "MountainCar-v0"
     env_name = "FrozenLake-v1"
+    
     # state_bounds = np.array([2.4, 2.5, 0.21, 2.5])
-    # state_bounds = np.array([0.5, 0.5, 0.5, 0.5, 2 * 3.14, 4.5 * 3.14])
-    # state_bounds = np.array([0.3, 0.035])
-    state_bounds = np.array([1, 1, 1, 1])
+    state_bounds = np.array([1, 1, 1, 1, 1, 1])
     gamma = 1
     terminate_reward = 0.9
     
@@ -469,7 +503,7 @@ if __name__ == "__main__":
         "state_bounds": state_bounds,
         "gamma": gamma,
         "terminate_reward": terminate_reward,
-        "n_episodes": 10000,
+        "n_episodes": 2000,
         "max_memory_length": 10000,
         "epsilon": 1.0,
         "epsilon_min": 0.01,
