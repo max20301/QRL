@@ -2,7 +2,7 @@
 
 ## run code in google colab
 
-[google colab]([https://www.runoob.com](https://colab.research.google.com/drive/15hjaBNVRBVmPhgYodLMNKSuRx8NEsTDq#scrollTo=yImT5bdoww6Y))
+[google colab](https://colab.research.google.com/drive/15hjaBNVRBVmPhgYodLMNKSuRx8NEsTDq#scrollTo=yImT5bdoww6Y)
 
 ## run code through script
 
